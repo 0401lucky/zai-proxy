@@ -8,7 +8,7 @@ import (
 )
 
 func TestResolveWithTokenMap(t *testing.T) {
-	if err := Init("", "", "", "alice=token-a,bob=token-b", "", "admin-key"); err != nil {
+	if err := Init("", "", "", "", "alice=token-a,bob=token-b", "", "admin-key"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -22,7 +22,7 @@ func TestResolveWithTokenMap(t *testing.T) {
 }
 
 func TestResolvePassesThroughPersonalToken(t *testing.T) {
-	if err := Init("", "", "", "alice=token-a", "", "admin-key"); err != nil {
+	if err := Init("", "", "", "", "alice=token-a", "", "admin-key"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -36,7 +36,7 @@ func TestResolvePassesThroughPersonalToken(t *testing.T) {
 }
 
 func TestLegacyProxyKeyWithoutStoredToken(t *testing.T) {
-	if err := Init("", "", "proxy-key", "", "", ""); err != nil {
+	if err := Init("", "", "proxy-key", "", "", "", ""); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -48,7 +48,7 @@ func TestLegacyProxyKeyWithoutStoredToken(t *testing.T) {
 
 func TestSetTokenWritesTokenMapFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zai_tokens.json")
-	if err := Init("", "", "", "", path, "admin-key"); err != nil {
+	if err := Init("", "", "", "", "", path, "admin-key"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 
@@ -72,7 +72,7 @@ func TestSetTokenWritesTokenMapFile(t *testing.T) {
 
 func TestDeleteTokenWritesTokenMapFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zai_tokens.json")
-	if err := Init("", "", "", "alice=token-a,bob=token-b", path, "admin-key"); err != nil {
+	if err := Init("", "", "", "", "alice=token-a,bob=token-b", path, "admin-key"); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
 	if err := DeleteToken("alice"); err != nil {
@@ -88,6 +88,59 @@ func TestDeleteTokenWritesTokenMapFile(t *testing.T) {
 	}
 	if !containsAll(string(data), `"bob"`, `"token-b"`) {
 		t.Errorf("file should contain bob token, got %q", string(data))
+	}
+}
+
+func TestResolvePoolAPIKeyRoundRobin(t *testing.T) {
+	if err := Init("", "", "", "pool-key", "alice=token-a,bob=token-b", "", "admin-key"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	first, err := Resolve("pool-key")
+	if err != nil {
+		t.Fatalf("Resolve first: %v", err)
+	}
+	second, err := Resolve("pool-key")
+	if err != nil {
+		t.Fatalf("Resolve second: %v", err)
+	}
+	third, err := Resolve("pool-key")
+	if err != nil {
+		t.Fatalf("Resolve third: %v", err)
+	}
+
+	if first != "token-a" || second != "token-b" || third != "token-a" {
+		t.Errorf("round robin = [%q, %q, %q]", first, second, third)
+	}
+}
+
+func TestResolvePoolAPIKeyTakesPrecedenceOverTokenKey(t *testing.T) {
+	if err := Init("", "", "", "pool-key", "alice=token-a,pool-key=token-pool-key", "", "admin-key"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	first, err := Resolve("pool-key")
+	if err != nil {
+		t.Fatalf("Resolve first: %v", err)
+	}
+	second, err := Resolve("pool-key")
+	if err != nil {
+		t.Fatalf("Resolve second: %v", err)
+	}
+
+	if first != "token-a" || second != "token-pool-key" {
+		t.Errorf("pool precedence round robin = [%q, %q]", first, second)
+	}
+}
+
+func TestResolvePoolAPIKeyWithoutTokens(t *testing.T) {
+	if err := Init("", "", "", "pool-key", "", "", "admin-key"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	_, err := Resolve("pool-key")
+	if !errors.Is(err, ErrNoStoredToken) {
+		t.Fatalf("Resolve err = %v, want ErrNoStoredToken", err)
 	}
 }
 

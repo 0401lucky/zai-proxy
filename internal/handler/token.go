@@ -162,7 +162,7 @@ var adminPageTemplate = template.Must(template.New("admin").Parse(`<!doctype htm
 <body>
 <main>
   <h1>zai-proxy token 管理</h1>
-  <p>在这里导入多个账号的 z.ai token。客户端只需要使用你设置的代理 key，请求会自动映射到对应账号。</p>
+  <p>在这里导入多个账号的 z.ai token。客户端统一使用环境变量 POOL_API_KEY，请求会自动从账号池轮询选择账号。</p>
 
   <section>
     <label for="adminKey">管理密钥 ADMIN_API_KEY</label>
@@ -176,8 +176,8 @@ var adminPageTemplate = template.Must(template.New("admin").Parse(`<!doctype htm
 
   <section>
     <label for="bulk">批量导入</label>
-    <textarea id="bulk" spellcheck="false" placeholder="每行一个：代理key=z.ai token&#10;alice=eyJhbGciOi...&#10;bob=eyJhbGciOi..."></textarea>
-    <p class="hint">代理 key 是客户端要填写的 API Key；右侧是对应账号从 chat.z.ai Cookie 中复制的 token。</p>
+    <textarea id="bulk" spellcheck="false" placeholder="每行一个：账号名=z.ai token&#10;alice=eyJhbGciOi...&#10;bob=eyJhbGciOi..."></textarea>
+    <p class="hint">账号名只是后台标识；客户端默认统一填写 POOL_API_KEY。右侧是对应账号从 chat.z.ai Cookie 中复制的 token。</p>
     <button onclick="importTokens()">导入 / 覆盖</button>
   </section>
 
@@ -282,7 +282,7 @@ function renderTokens(tokens) {
     tokenBox.innerHTML = '<p class="hint">暂无导入账号。</p>';
     return;
   }
-  tokenBox.innerHTML = '<table><thead><tr><th>代理 key</th><th>来源</th><th>token 预览</th><th></th></tr></thead><tbody>' +
+  tokenBox.innerHTML = '<table><thead><tr><th>账号名</th><th>来源</th><th>token 预览</th><th></th></tr></thead><tbody>' +
     tokens.map(item => '<tr><td>' + escapeHtml(item.key) + '</td><td>' + escapeHtml(item.source || '') + '</td><td>' + escapeHtml(item.token_preview || '') + '</td><td><button class="danger" onclick="deleteToken(\'' + escapeAttr(item.key) + '\')">删除</button></td></tr>').join('') +
     '</tbody></table>';
 }

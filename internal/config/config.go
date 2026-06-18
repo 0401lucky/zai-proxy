@@ -14,6 +14,7 @@ type Config struct {
 	ZAIToken         string
 	ZAITokenFile     string
 	ProxyAPIKey      string
+	PoolAPIKey       string
 	AdminAPIKey      string
 	ZAITokenMap      string
 	ZAITokenMapFile  string
@@ -50,6 +51,7 @@ func LoadConfig() {
 		ZAIToken:         strings.TrimSpace(os.Getenv("ZAI_TOKEN")),
 		ZAITokenFile:     strings.TrimSpace(os.Getenv("ZAI_TOKEN_FILE")),
 		ProxyAPIKey:      strings.TrimSpace(os.Getenv("PROXY_API_KEY")),
+		PoolAPIKey:       strings.TrimSpace(os.Getenv("POOL_API_KEY")),
 		AdminAPIKey:      strings.TrimSpace(os.Getenv("ADMIN_API_KEY")),
 		ZAITokenMap:      strings.TrimSpace(os.Getenv("ZAI_TOKEN_MAP")),
 		ZAITokenMapFile:  strings.TrimSpace(os.Getenv("ZAI_TOKEN_MAP_FILE")),

@@ -36,6 +36,7 @@ EXPOSE 8000
 PORT=8000
 LOG_LEVEL=info
 ADMIN_API_KEY=换成你自己的管理密钥
+POOL_API_KEY=换成客户端统一使用的调用密钥
 ZAI_TOKEN_MAP_FILE=/data/zai_tokens.json
 ```
 
@@ -47,6 +48,7 @@ LOG_LEVEL=info
 ZAI_UPSTREAM_BASE_URL=https://chat.z.ai
 ZAI_CHAT_ENDPOINT_PATH=/api/v2/chat/completions
 ADMIN_API_KEY=换成你自己的管理密钥
+POOL_API_KEY=换成客户端统一使用的调用密钥
 ZAI_TOKEN_MAP_FILE=/data/zai_tokens.json
 ZAI_TOKEN_MAP=alice=alice账号token,bob=bob账号token
 ```
@@ -58,8 +60,9 @@ ZAI_TOKEN_MAP=alice=alice账号token,bob=bob账号token
 - `ZAI_UPSTREAM_BASE_URL`：z.ai 上游地址，通常不用改。
 - `ZAI_CHAT_ENDPOINT_PATH`：聊天补全上游路径，通常不用改。
 - `ADMIN_API_KEY`：访问 `/admin` token 管理网页和 API 的管理密钥。
+- `POOL_API_KEY`：统一号池 API key。客户端填这个值，服务端会从已导入账号池中轮询选择 z.ai token。
 - `ZAI_TOKEN_MAP_FILE`：多账号 token 持久化文件路径。
-- `ZAI_TOKEN_MAP`：可选初始账号映射，格式是 `代理key=z.ai token`。
+- `ZAI_TOKEN_MAP`：可选初始账号映射，格式是 `账号名=z.ai token`。
 
 ## 4. 卷挂载
 
@@ -120,7 +123,7 @@ OpenAI 兼容客户端：
 
 ```text
 Base URL: https://你的-zeabur域名/v1
-API Key: 你在 /admin 里设置的代理 key
+API Key: 你的 POOL_API_KEY
 Model: glm-5.2
 ```
 
@@ -128,13 +131,13 @@ Anthropic 兼容客户端：
 
 ```text
 Base URL: https://你的-zeabur域名
-API Key: 你在 /admin 里设置的代理 key
+API Key: 你的 POOL_API_KEY
 Model: claude-sonnet-4-6
 ```
 
 如果你不使用网页导入，也可以继续让客户端直接填 z.ai token。
-推荐 Zeabur 部署使用 `/admin` 导入方式，这样不用把 z.ai token
-分发到每个客户端。
+推荐 Zeabur 部署使用 `/admin` 导入账号池，客户端统一填 `POOL_API_KEY`，
+这样不用把 z.ai token 分发到每个客户端。
 
 ## 8. Token 获取与热更新
 
@@ -163,7 +166,8 @@ alice=alice账号的_z.ai_token
 bob=bob账号的_z.ai_token
 ```
 
-客户端 API key 填 `alice` 就会使用 alice 账号，填 `bob` 就会使用 bob 账号。
+客户端 API key 默认填 `POOL_API_KEY`，服务端会在 `alice`、`bob` 等账号之间轮询。
+如果你需要指定某个账号，也可以直接把客户端 API key 填成 `alice` 或 `bob`。
 
 也可以用 API 批量导入：
 
@@ -196,7 +200,7 @@ curl https://你的-zeabur域名/v1/models
 
 ```bash
 curl https://你的-zeabur域名/v1/chat/completions \
-  -H "Authorization: Bearer alice" \
+  -H "Authorization: Bearer 你的_POOL_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "glm-5.2",

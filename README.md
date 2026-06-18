@@ -130,8 +130,9 @@ chat.z.ai 对匿名聊天请求可能返回前端验证码要求。Zeabur 后端
 | `ZAI_UPSTREAM_BASE_URL` | z.ai 上游地址 | `https://chat.z.ai` |
 | `ZAI_CHAT_ENDPOINT_PATH` | 聊天补全上游路径 | `/api/v2/chat/completions` |
 | `ADMIN_API_KEY` | `/admin` token 管理网页和 API 的管理密钥 | 空 |
+| `POOL_API_KEY` | 统一号池 API key；客户端填这个值时会轮询使用已导入账号 | 空 |
 | `ZAI_TOKEN_MAP_FILE` | 多账号 token 持久化 JSON 文件路径 | 空 |
-| `ZAI_TOKEN_MAP` | 可选的初始多账号映射，格式 `key1=token1,key2=token2` | 空 |
+| `ZAI_TOKEN_MAP` | 可选的初始多账号映射，格式 `账号名1=token1,账号名2=token2` | 空 |
 | `PROXY_API_KEY` | 旧版单账号代理 key，仍兼容 | 空 |
 | `ZAI_TOKEN` | 旧版单账号初始 z.ai token，仍兼容 | 空 |
 | `ZAI_TOKEN_FILE` | 旧版单账号 token 文件，仍兼容 | 空 |
@@ -179,6 +180,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```env
 ADMIN_API_KEY=你自己设置的管理密钥
+POOL_API_KEY=客户端统一使用的调用密钥
 ZAI_TOKEN_MAP_FILE=/data/zai_tokens.json
 ```
 
@@ -195,7 +197,8 @@ alice=alice账号的_z.ai_token
 bob=bob账号的_z.ai_token
 ```
 
-客户端 API key 填 `alice` 就会走 alice 账号，填 `bob` 就会走 bob 账号。
+如果配置了 `POOL_API_KEY`，客户端统一填 `POOL_API_KEY`，代理会从已导入账号池中轮询选择一个 z.ai token。
+如果想指定账号，客户端 API key 也可以直接填 `alice` 或 `bob`。
 
 说明：当前前端未发现可用的 z.ai refresh token 接口，所以这里提供的是
 “网页导入 + 热更新 + 文件持久化”，不是自动刷新网页登录态。

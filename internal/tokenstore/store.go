@@ -22,9 +22,11 @@ var (
 	tokenByKey       = map[string]string{}
 	sourceByKey      = map[string]string{}
 	legacyProxyKey   string
+	poolAPIKey       string
 	adminAPIKey      string
 	singleTokenFile  string
 	tokenMapFile     string
+	poolCursor       int
 	storeLock        sync.RWMutex
 )
 
@@ -32,6 +34,8 @@ type Status struct {
 	Configured       bool        `json:"configured"`
 	Count            int         `json:"count"`
 	AdminEnabled     bool        `json:"admin_enabled"`
+	PoolEnabled      bool        `json:"pool_enabled"`
+	PoolKeyPreview   string      `json:"pool_key_preview,omitempty"`
 	LegacyProxyKey   string      `json:"legacy_proxy_key_preview,omitempty"`
 	TokenFile        string      `json:"token_file,omitempty"`
 	TokenMapFile     string      `json:"token_map_file,omitempty"`
@@ -45,16 +49,18 @@ type TokenInfo struct {
 	TokenPreview string `json:"token_preview,omitempty"`
 }
 
-func Init(initialToken, filePath, apiKey, tokenMap, mapFile, adminKey string) error {
+func Init(initialToken, filePath, apiKey, poolKey, tokenMap, mapFile, adminKey string) error {
 	storeLock.Lock()
 	defer storeLock.Unlock()
 
 	tokenByKey = map[string]string{}
 	sourceByKey = map[string]string{}
 	legacyProxyKey = strings.TrimSpace(apiKey)
+	poolAPIKey = strings.TrimSpace(poolKey)
 	adminAPIKey = strings.TrimSpace(adminKey)
 	singleTokenFile = strings.TrimSpace(filePath)
 	tokenMapFile = strings.TrimSpace(mapFile)
+	poolCursor = 0
 
 	if err := loadEnvTokenMapLocked(tokenMap); err != nil {
 		return err
@@ -79,17 +85,23 @@ func Resolve(requestToken string) (string, error) {
 	}
 
 	storeLock.RLock()
-	defer storeLock.RUnlock()
 
+	if poolAPIKey != "" && secureEqual(requestToken, poolAPIKey) {
+		storeLock.RUnlock()
+		return resolveFromPool()
+	}
 	if token, ok := tokenByKey[requestToken]; ok {
+		storeLock.RUnlock()
 		if token == "" {
 			return "", ErrNoStoredToken
 		}
 		return token, nil
 	}
 	if legacyProxyKey != "" && secureEqual(requestToken, legacyProxyKey) {
+		storeLock.RUnlock()
 		return "", ErrNoStoredToken
 	}
+	storeLock.RUnlock()
 	return requestToken, nil
 }
 
@@ -171,11 +183,7 @@ func GetStatus() Status {
 	storeLock.RLock()
 	defer storeLock.RUnlock()
 
-	keys := make([]string, 0, len(tokenByKey))
-	for key := range tokenByKey {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
+	keys := sortedKeysLocked()
 
 	tokens := make([]TokenInfo, 0, len(keys))
 	for _, key := range keys {
@@ -195,12 +203,31 @@ func GetStatus() Status {
 		Configured:       len(tokenByKey) > 0,
 		Count:            len(tokenByKey),
 		AdminEnabled:     adminAPIKey != "" || legacyProxyKey != "",
+		PoolEnabled:      poolAPIKey != "",
+		PoolKeyPreview:   previewToken(poolAPIKey),
 		LegacyProxyKey:   previewToken(legacyProxyKey),
 		TokenFile:        singleTokenFile,
 		TokenMapFile:     tokenMapFile,
 		Tokens:           tokens,
 		DeprecatedSource: source,
 	}
+}
+
+func resolveFromPool() (string, error) {
+	storeLock.Lock()
+	defer storeLock.Unlock()
+
+	keys := sortedKeysLocked()
+	if len(keys) == 0 {
+		return "", ErrNoStoredToken
+	}
+	key := keys[poolCursor%len(keys)]
+	poolCursor = (poolCursor + 1) % len(keys)
+	token := tokenByKey[key]
+	if token == "" {
+		return "", ErrNoStoredToken
+	}
+	return token, nil
 }
 
 func loadEnvTokenMapLocked(raw string) error {
@@ -302,6 +329,15 @@ func writeTokenMapFileLocked() error {
 		return nil
 	}
 	return writeJSONFile(tokenMapFile, tokenByKey)
+}
+
+func sortedKeysLocked() []string {
+	keys := make([]string, 0, len(tokenByKey))
+	for key := range tokenByKey {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func writeJSONFile(path string, data interface{}) error {

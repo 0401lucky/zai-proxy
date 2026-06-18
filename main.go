@@ -18,6 +18,7 @@ func main() {
 		config.Cfg.ZAIToken,
 		config.Cfg.ZAITokenFile,
 		config.Cfg.ProxyAPIKey,
+		config.Cfg.PoolAPIKey,
 		config.Cfg.ZAITokenMap,
 		config.Cfg.ZAITokenMapFile,
 		config.Cfg.AdminAPIKey,
