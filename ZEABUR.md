@@ -60,7 +60,7 @@ ZAI_TOKEN_MAP=alice=alice账号token,bob=bob账号token
 - `ZAI_UPSTREAM_BASE_URL`：z.ai 上游地址，通常不用改。
 - `ZAI_CHAT_ENDPOINT_PATH`：聊天补全上游路径，通常不用改。
 - `ADMIN_API_KEY`：访问 `/admin` token 管理网页和 API 的管理密钥。
-- `POOL_API_KEY`：统一号池 API key。客户端填这个值，服务端会从已导入账号池中轮询选择 z.ai token。
+- `POOL_API_KEY`：统一号池 API key。客户端填这个值，服务端会从已导入账号池中轮询选择账号。
 - `ZAI_TOKEN_MAP_FILE`：多账号 token 持久化文件路径。
 - `ZAI_TOKEN_MAP`：可选初始账号映射，格式是 `账号名=z.ai token`。
 
@@ -135,7 +135,7 @@ API Key: 你的 POOL_API_KEY
 Model: claude-sonnet-4-6
 ```
 
-如果你不使用网页导入，也可以继续让客户端直接填 z.ai token。
+如果你不使用网页导入，也可以继续让客户端直接填 z.ai session token。
 推荐 Zeabur 部署使用 `/admin` 导入账号池，客户端统一填 `POOL_API_KEY`，
 这样不用把 z.ai token 分发到每个客户端。
 
@@ -147,7 +147,7 @@ Model: claude-sonnet-4-6
 2. 打开浏览器开发者工具。
 3. 进入 Application 或 Storage。
 4. 在 Cookies 中找到 `token`。
-5. 将该值作为客户端 API Key 使用。
+5. 将该值复制到 `/admin` 导入。
 
 `free` 匿名令牌仍可触发 guest token 获取，但截至 2026-06-18，
 chat.z.ai 可能要求前端验证码。Zeabur 后端无法交互完成滑块验证，
@@ -169,6 +169,9 @@ bob=bob账号的_z.ai_token
 客户端 API key 默认填 `POOL_API_KEY`，服务端会在 `alice`、`bob` 等账号之间轮询。
 如果你需要指定某个账号，也可以直接把客户端 API key 填成 `alice` 或 `bob`。
 
+导入时服务会自动向 z.ai 验证 token，识别账号邮箱、昵称、角色，
+并保存实际请求使用的 session token。导入失败就说明这个 token 当前不可用。
+
 也可以用 API 批量导入：
 
 ```bash
@@ -179,8 +182,8 @@ curl https://你的-zeabur域名/admin/tokens \
   -d '{"items":[{"key":"alice","token":"alice账号token"},{"key":"bob","token":"bob账号token"}]}'
 ```
 
-说明：当前 `chat.z.ai` 前端没有发现可用的 refresh token 接口。
-这里实现的是“网页导入 + 热更新 + 文件持久化”，不是自动刷新网页登录态。
+说明：网页导入会保存原始 Cookie token 和换取后的 session token。
+如果账号在 z.ai 网页侧失效，重新导入一次该账号 token 即可刷新。
 
 ## 9. 验证命令
 

@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"zai-proxy/internal/auth"
 	"zai-proxy/internal/tokenstore"
+	"zai-proxy/internal/zai"
 )
 
 type tokenImportItem struct {
@@ -76,11 +76,29 @@ func handleTokenImport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Each item requires key and token", http.StatusBadRequest)
 			return
 		}
-		if !isValidZAIToken(token) {
-			http.Error(w, "Invalid z.ai token for key: "+key, http.StatusBadRequest)
+		session, err := zai.ExchangeToken(r.Context(), token)
+		if err != nil {
+			http.Error(w, "Invalid z.ai token for key: "+key+"; "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := tokenstore.SetToken(key, token); err != nil {
+		completionVersion, err := zai.CompletionVersion(r.Context(), session.Token)
+		if err != nil {
+			http.Error(w, "Failed to verify z.ai account for key: "+key+"; "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if completionVersion != 2 {
+			http.Error(w, "Unsupported z.ai completion version for key: "+key, http.StatusBadRequest)
+			return
+		}
+		account := tokenstore.Account{
+			Token:  session.Token,
+			JWT:    token,
+			UserID: session.UserID,
+			Email:  session.Email,
+			Name:   session.Name,
+			Role:   session.Role,
+		}
+		if err := tokenstore.SetAccount(key, account); err != nil {
 			if errors.Is(err, tokenstore.ErrMissingKey) || errors.Is(err, tokenstore.ErrMissingToken) {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
@@ -112,11 +130,6 @@ func handleTokenDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tokenstore.GetStatus())
-}
-
-func isValidZAIToken(token string) bool {
-	payload, err := auth.DecodeJWTPayload(token)
-	return err == nil && payload != nil && payload.ID != ""
 }
 
 func writeJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -162,7 +175,7 @@ var adminPageTemplate = template.Must(template.New("admin").Parse(`<!doctype htm
 <body>
 <main>
   <h1>zai-proxy token 管理</h1>
-  <p>在这里导入多个账号的 z.ai token。客户端统一使用环境变量 POOL_API_KEY，请求会自动从账号池轮询选择账号。</p>
+  <p>在这里导入多个账号的 z.ai token。导入时会自动识别账号信息并换取会话 token，客户端统一使用环境变量 POOL_API_KEY。</p>
 
   <section>
     <label for="adminKey">管理密钥 ADMIN_API_KEY</label>
@@ -177,7 +190,7 @@ var adminPageTemplate = template.Must(template.New("admin").Parse(`<!doctype htm
   <section>
     <label for="bulk">批量导入</label>
     <textarea id="bulk" spellcheck="false" placeholder="每行一个：账号名=z.ai token&#10;alice=eyJhbGciOi...&#10;bob=eyJhbGciOi..."></textarea>
-    <p class="hint">账号名只是后台标识；客户端默认统一填写 POOL_API_KEY。右侧是对应账号从 chat.z.ai Cookie 中复制的 token。</p>
+    <p class="hint">账号名只是后台标识；客户端默认统一填写 POOL_API_KEY。右侧是对应账号从 chat.z.ai Cookie 中复制的 token，导入成功后会显示识别到的账号信息。</p>
     <button onclick="importTokens()">导入 / 覆盖</button>
   </section>
 
@@ -282,8 +295,8 @@ function renderTokens(tokens) {
     tokenBox.innerHTML = '<p class="hint">暂无导入账号。</p>';
     return;
   }
-  tokenBox.innerHTML = '<table><thead><tr><th>账号名</th><th>来源</th><th>token 预览</th><th></th></tr></thead><tbody>' +
-    tokens.map(item => '<tr><td>' + escapeHtml(item.key) + '</td><td>' + escapeHtml(item.source || '') + '</td><td>' + escapeHtml(item.token_preview || '') + '</td><td><button class="danger" onclick="deleteToken(\'' + escapeAttr(item.key) + '\')">删除</button></td></tr>').join('') +
+  tokenBox.innerHTML = '<table><thead><tr><th>账号名</th><th>识别账号</th><th>邮箱</th><th>角色</th><th>来源</th><th>token 预览</th><th></th></tr></thead><tbody>' +
+    tokens.map(item => '<tr><td>' + escapeHtml(item.key) + '</td><td>' + escapeHtml(item.name || item.user_id || '') + '</td><td>' + escapeHtml(item.email || '') + '</td><td>' + escapeHtml(item.role || '') + '</td><td>' + escapeHtml(item.source || '') + '</td><td>' + escapeHtml(item.token_preview || '') + '</td><td><button class="danger" onclick="deleteToken(\'' + escapeAttr(item.key) + '\')">删除</button></td></tr>').join('') +
     '</tbody></table>';
 }
 

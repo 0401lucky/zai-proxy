@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 var (
@@ -19,7 +20,7 @@ var (
 	ErrAdminDisabled = errors.New("admin token api is disabled")
 	ErrUnauthorized  = errors.New("unauthorized")
 	ErrTokenNotFound = errors.New("token key not found")
-	tokenByKey       = map[string]string{}
+	accountByKey     = map[string]Account{}
 	sourceByKey      = map[string]string{}
 	legacyProxyKey   string
 	poolAPIKey       string
@@ -47,13 +48,28 @@ type TokenInfo struct {
 	Key          string `json:"key"`
 	Source       string `json:"source"`
 	TokenPreview string `json:"token_preview,omitempty"`
+	UserID       string `json:"user_id,omitempty"`
+	Email        string `json:"email,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Role         string `json:"role,omitempty"`
+	UpdatedAt    int64  `json:"updated_at,omitempty"`
+}
+
+type Account struct {
+	Token     string `json:"token"`
+	JWT       string `json:"jwt,omitempty"`
+	UserID    string `json:"user_id,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Role      string `json:"role,omitempty"`
+	UpdatedAt int64  `json:"updated_at,omitempty"`
 }
 
 func Init(initialToken, filePath, apiKey, poolKey, tokenMap, mapFile, adminKey string) error {
 	storeLock.Lock()
 	defer storeLock.Unlock()
 
-	tokenByKey = map[string]string{}
+	accountByKey = map[string]Account{}
 	sourceByKey = map[string]string{}
 	legacyProxyKey = strings.TrimSpace(apiKey)
 	poolAPIKey = strings.TrimSpace(poolKey)
@@ -90,12 +106,12 @@ func Resolve(requestToken string) (string, error) {
 		storeLock.RUnlock()
 		return resolveFromPool()
 	}
-	if token, ok := tokenByKey[requestToken]; ok {
+	if account, ok := accountByKey[requestToken]; ok {
 		storeLock.RUnlock()
-		if token == "" {
+		if account.Token == "" {
 			return "", ErrNoStoredToken
 		}
-		return token, nil
+		return account.Token, nil
 	}
 	if legacyProxyKey != "" && secureEqual(requestToken, legacyProxyKey) {
 		storeLock.RUnlock()
@@ -123,22 +139,41 @@ func AdminEnabled() bool {
 }
 
 func SetToken(key, newToken string) error {
+	return setAccount(key, Account{
+		Token:     strings.TrimSpace(newToken),
+		UpdatedAt: time.Now().Unix(),
+	}, false)
+}
+
+func SetAccount(key string, account Account) error {
+	account.Token = strings.TrimSpace(account.Token)
+	account.JWT = strings.TrimSpace(account.JWT)
+	account.UserID = strings.TrimSpace(account.UserID)
+	account.Email = strings.TrimSpace(account.Email)
+	account.Name = strings.TrimSpace(account.Name)
+	account.Role = strings.TrimSpace(account.Role)
+	if account.UpdatedAt == 0 {
+		account.UpdatedAt = time.Now().Unix()
+	}
+	return setAccount(key, account, true)
+}
+
+func setAccount(key string, account Account, structured bool) error {
 	key = strings.TrimSpace(key)
-	newToken = strings.TrimSpace(newToken)
 	if key == "" {
 		key = legacyProxyKey
 	}
 	if key == "" {
 		return ErrMissingKey
 	}
-	if newToken == "" {
+	if account.Token == "" {
 		return ErrMissingToken
 	}
 
 	storeLock.Lock()
 	defer storeLock.Unlock()
 
-	tokenByKey[key] = newToken
+	accountByKey[key] = account
 	if tokenMapFile != "" {
 		if err := writeTokenMapFileLocked(); err != nil {
 			return err
@@ -147,8 +182,8 @@ func SetToken(key, newToken string) error {
 		return nil
 	}
 
-	if singleTokenFile != "" && legacyProxyKey != "" && secureEqual(key, legacyProxyKey) {
-		if err := writeTokenFile(singleTokenFile, newToken); err != nil {
+	if !structured && singleTokenFile != "" && legacyProxyKey != "" && secureEqual(key, legacyProxyKey) {
+		if err := writeTokenFile(singleTokenFile, account.Token); err != nil {
 			return err
 		}
 		sourceByKey[key] = "file"
@@ -168,10 +203,10 @@ func DeleteToken(key string) error {
 	storeLock.Lock()
 	defer storeLock.Unlock()
 
-	if _, ok := tokenByKey[key]; !ok {
+	if _, ok := accountByKey[key]; !ok {
 		return ErrTokenNotFound
 	}
-	delete(tokenByKey, key)
+	delete(accountByKey, key)
 	delete(sourceByKey, key)
 	if tokenMapFile != "" {
 		return writeTokenMapFileLocked()
@@ -187,10 +222,16 @@ func GetStatus() Status {
 
 	tokens := make([]TokenInfo, 0, len(keys))
 	for _, key := range keys {
+		account := accountByKey[key]
 		tokens = append(tokens, TokenInfo{
 			Key:          key,
 			Source:       sourceByKey[key],
-			TokenPreview: previewToken(tokenByKey[key]),
+			TokenPreview: previewToken(account.Token),
+			UserID:       account.UserID,
+			Email:        account.Email,
+			Name:         account.Name,
+			Role:         account.Role,
+			UpdatedAt:    account.UpdatedAt,
 		})
 	}
 
@@ -200,8 +241,8 @@ func GetStatus() Status {
 	}
 
 	return Status{
-		Configured:       len(tokenByKey) > 0,
-		Count:            len(tokenByKey),
+		Configured:       len(accountByKey) > 0,
+		Count:            len(accountByKey),
 		AdminEnabled:     adminAPIKey != "" || legacyProxyKey != "",
 		PoolEnabled:      poolAPIKey != "",
 		PoolKeyPreview:   previewToken(poolAPIKey),
@@ -223,11 +264,11 @@ func resolveFromPool() (string, error) {
 	}
 	key := keys[poolCursor%len(keys)]
 	poolCursor = (poolCursor + 1) % len(keys)
-	token := tokenByKey[key]
-	if token == "" {
+	account := accountByKey[key]
+	if account.Token == "" {
 		return "", ErrNoStoredToken
 	}
-	return token, nil
+	return account.Token, nil
 }
 
 func loadEnvTokenMapLocked(raw string) error {
@@ -246,7 +287,11 @@ func loadEnvTokenMapLocked(raw string) error {
 		if key == "" || token == "" {
 			return fmt.Errorf("invalid ZAI_TOKEN_MAP entry %q", pair)
 		}
-		tokenByKey[key] = token
+		accountByKey[key] = Account{
+			Token:     token,
+			JWT:       token,
+			UpdatedAt: time.Now().Unix(),
+		}
 		sourceByKey[key] = "env-map"
 	}
 	return nil
@@ -271,7 +316,11 @@ func loadLegacyTokenLocked(token, source string) {
 	if legacyProxyKey == "" || token == "" {
 		return
 	}
-	tokenByKey[legacyProxyKey] = token
+	accountByKey[legacyProxyKey] = Account{
+		Token:     token,
+		JWT:       token,
+		UpdatedAt: time.Now().Unix(),
+	}
 	sourceByKey[legacyProxyKey] = source
 }
 
@@ -308,17 +357,47 @@ func loadTokenMapFileLocked() error {
 		return err
 	}
 
-	var fileTokens map[string]string
-	if err := json.Unmarshal(data, &fileTokens); err != nil {
+	var rawTokens map[string]json.RawMessage
+	if err := json.Unmarshal(data, &rawTokens); err != nil {
 		return err
 	}
-	for key, token := range fileTokens {
+	for key, raw := range rawTokens {
 		key = strings.TrimSpace(key)
-		token = strings.TrimSpace(token)
-		if key == "" || token == "" {
+		if key == "" {
 			continue
 		}
-		tokenByKey[key] = token
+
+		var token string
+		if err := json.Unmarshal(raw, &token); err == nil {
+			token = strings.TrimSpace(token)
+			if token == "" {
+				continue
+			}
+			accountByKey[key] = Account{
+				Token:     token,
+				JWT:       token,
+				UpdatedAt: time.Now().Unix(),
+			}
+			sourceByKey[key] = "file-map"
+			continue
+		}
+
+		var account Account
+		if err := json.Unmarshal(raw, &account); err != nil {
+			continue
+		}
+		account.Token = strings.TrimSpace(account.Token)
+		account.JWT = strings.TrimSpace(account.JWT)
+		if account.Token == "" && account.JWT != "" {
+			account.Token = account.JWT
+		}
+		if account.Token == "" {
+			continue
+		}
+		if account.UpdatedAt == 0 {
+			account.UpdatedAt = time.Now().Unix()
+		}
+		accountByKey[key] = account
 		sourceByKey[key] = "file-map"
 	}
 	return nil
@@ -328,12 +407,12 @@ func writeTokenMapFileLocked() error {
 	if tokenMapFile == "" {
 		return nil
 	}
-	return writeJSONFile(tokenMapFile, tokenByKey)
+	return writeJSONFile(tokenMapFile, accountByKey)
 }
 
 func sortedKeysLocked() []string {
-	keys := make([]string, 0, len(tokenByKey))
-	for key := range tokenByKey {
+	keys := make([]string, 0, len(accountByKey))
+	for key := range accountByKey {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)

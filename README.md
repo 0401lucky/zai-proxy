@@ -172,7 +172,7 @@ curl http://localhost:8000/v1/chat/completions \
 2. 打开浏览器开发者工具 (F12)
 3. 切换到 Application/Storage 标签
 4. 在 Cookies 中找到 `token` 字段
-5. 复制其值作为 API 调用的 Authorization
+5. 复制其值到 `/admin` 账号池导入页
 
 ### 方式三：网页导入多个账号 Token
 
@@ -197,11 +197,12 @@ alice=alice账号的_z.ai_token
 bob=bob账号的_z.ai_token
 ```
 
-如果配置了 `POOL_API_KEY`，客户端统一填 `POOL_API_KEY`，代理会从已导入账号池中轮询选择一个 z.ai token。
+导入时服务会自动调用 z.ai 识别账号信息，并把 Cookie token 换成实际请求使用的 session token。
+如果配置了 `POOL_API_KEY`，客户端统一填 `POOL_API_KEY`，代理会从已导入账号池中轮询选择一个账号。
 如果想指定账号，客户端 API key 也可以直接填 `alice` 或 `bob`。
 
-说明：当前前端未发现可用的 z.ai refresh token 接口，所以这里提供的是
-“网页导入 + 热更新 + 文件持久化”，不是自动刷新网页登录态。
+说明：网页导入会保存原始 Cookie token 和换取后的 session token。
+如果账号在 z.ai 网页侧失效，重新导入一次该账号 token 即可刷新。
 
 ## API 端点
 
@@ -219,9 +220,10 @@ bob=bob账号的_z.ai_token
 
 ### `POST /admin/tokens`
 
-导入或覆盖多个账号 token。必须使用 `ADMIN_API_KEY` 鉴权。
+导入或覆盖多个账号 token。服务会先向 z.ai 验证 token 并识别账号信息，成功后才保存。
+必须使用 `ADMIN_API_KEY` 鉴权。
 
-### `DELETE /admin/tokens?key=<代理key>`
+### `DELETE /admin/tokens?key=<账号名>`
 
 删除指定账号 token。必须使用 `ADMIN_API_KEY` 鉴权。
 

@@ -83,6 +83,89 @@ func buildChatQuery(token, userID, requestID, chatID, userAgent string, timestam
 	return values.Encode()
 }
 
+func createChat(token, modelName, prompt, userAgent string, enableThinking, autoWebSearch bool) (string, string, error) {
+	userMsgID := uuid.New().String()
+	chat := map[string]interface{}{
+		"id":     "",
+		"title":  "New Chat",
+		"models": []string{modelName},
+		"history": map[string]interface{}{
+			"currentId": userMsgID,
+			"messages": map[string]interface{}{
+				userMsgID: map[string]interface{}{
+					"id":          userMsgID,
+					"parentId":    nil,
+					"childrenIds": []string{},
+					"role":        "user",
+					"content":     prompt,
+					"timestamp":   time.Now().Unix(),
+					"models":      []string{modelName},
+				},
+			},
+		},
+		"tags":            []string{},
+		"flags":           []string{},
+		"features":        []string{},
+		"mcp_servers":     []string{},
+		"enable_thinking": enableThinking,
+		"auto_web_search": autoWebSearch,
+		"message_version": 1,
+		"timestamp":       time.Now().UnixMilli(),
+	}
+
+	bodyBytes, _ := json.Marshal(map[string]interface{}{"chat": chat})
+	req, err := http.NewRequest("POST", config.UpstreamBaseURL()+"/api/v1/chats/new", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://chat.z.ai")
+	req.Header.Set("Referer", "https://chat.z.ai/")
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("X-FE-Version", version.GetFeVersion())
+
+	resp, err := proxy.GetHTTPClient().Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", "", fmt.Errorf("create chat failed: status=%d", resp.StatusCode)
+	}
+
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return "", "", err
+	}
+	if payload.ID == "" {
+		return "", "", fmt.Errorf("create chat returned empty id")
+	}
+	return payload.ID, userMsgID, nil
+}
+
+func defaultVariables(name string) map[string]string {
+	if name == "" {
+		name = "User"
+	}
+	now := time.Now()
+	return map[string]string{
+		"{{USER_NAME}}":        name,
+		"{{USER_LOCATION}}":    "Unknown",
+		"{{CURRENT_DATETIME}}": now.Format("2006-01-02 03:04:05 PM"),
+		"{{CURRENT_DATE}}":     now.Format("2006-01-02"),
+		"{{CURRENT_TIME}}":     now.Format("03:04:05 PM"),
+		"{{CURRENT_WEEKDAY}}":  now.Weekday().String(),
+		"{{CURRENT_TIMEZONE}}": "UTC+8",
+		"{{USER_LANGUAGE}}":    "zh-CN",
+	}
+}
+
 func MakeUpstreamRequest(token string, messages []model.Message, modelName string, tools []model.Tool, toolChoice interface{}) (*http.Response, string, error) {
 	payload, err := auth.DecodeJWTPayload(token)
 	if err != nil || payload == nil {
@@ -90,19 +173,15 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 	}
 
 	userID := payload.ID
-	chatID := uuid.New().String()
 	timestamp := time.Now().UnixMilli()
 	requestID := uuid.New().String()
-	userMsgID := uuid.New().String()
 	assistantMsgID := uuid.New().String()
 
 	targetModel := model.GetTargetModel(modelName)
 	latestUserContent := ExtractLatestUserContent(messages)
 	imageURLs := ExtractAllImageURLs(messages)
 
-	signature := auth.GenerateSignature(userID, requestID, latestUserContent, timestamp)
 	userAgent := uarand.GetRandom()
-	requestURL := config.ChatEndpointURL() + "?" + buildChatQuery(token, userID, requestID, chatID, userAgent, timestamp)
 
 	enableThinking := model.IsThinkingModel(modelName)
 	autoWebSearch := model.IsSearchModel(modelName)
@@ -114,6 +193,14 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 	if targetModel == "glm-4.6v" || targetModel == "GLM-5v-Turbo" || targetModel == "GLM-4.1V-Thinking-FlashX" {
 		mcpServers = []string{"vlm-image-search", "vlm-image-recognition", "vlm-image-processing"}
 	}
+
+	chatID, userMsgID, err := createChat(token, targetModel, latestUserContent, userAgent, enableThinking, autoWebSearch)
+	if err != nil {
+		return nil, "", err
+	}
+
+	signature := auth.GenerateSignature(userID, requestID, latestUserContent, timestamp)
+	requestURL := config.ChatEndpointURL() + "?" + buildChatQuery(token, userID, requestID, chatID, userAgent, timestamp)
 
 	urlToFileID := make(map[string]string)
 	var filesData []map[string]interface{}
@@ -239,7 +326,7 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 		"signature_prompt": latestUserContent,
 		"params":           map[string]interface{}{},
 		"extra":            map[string]interface{}{},
-		"variables":        map[string]interface{}{},
+		"variables":        defaultVariables(payload.Name),
 		"features": map[string]interface{}{
 			"image_generation": false,
 			"web_search":       false,
@@ -252,6 +339,13 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 		"id":                             assistantMsgID,
 		"current_user_message_id":        userMsgID,
 		"current_user_message_parent_id": nil,
+		"background_tasks": map[string]interface{}{
+			"title_generation": true,
+			"tags_generation":  true,
+		},
+		"stream_options": map[string]interface{}{
+			"include_usage": true,
+		},
 	}
 
 	if len(mcpServers) > 0 {

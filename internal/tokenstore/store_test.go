@@ -70,6 +70,40 @@ func TestSetTokenWritesTokenMapFile(t *testing.T) {
 	}
 }
 
+func TestSetAccountWritesMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zai_tokens.json")
+	if err := Init("", "", "", "", "", path, "admin-key"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	if err := SetAccount("alice", Account{
+		Token:  "session-token-a",
+		JWT:    "jwt-token-a",
+		UserID: "user-a",
+		Email:  "alice@example.com",
+		Name:   "Alice",
+		Role:   "user",
+	}); err != nil {
+		t.Fatalf("SetAccount: %v", err)
+	}
+
+	status := GetStatus()
+	if status.Count != 1 || status.Tokens[0].Email != "alice@example.com" || status.Tokens[0].Name != "Alice" {
+		t.Fatalf("status = %+v", status)
+	}
+
+	if err := Init("", "", "", "", "", path, "admin-key"); err != nil {
+		t.Fatalf("reload Init: %v", err)
+	}
+	got, err := Resolve("alice")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != "session-token-a" {
+		t.Fatalf("Resolve = %q, want session token", got)
+	}
+}
+
 func TestDeleteTokenWritesTokenMapFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "zai_tokens.json")
 	if err := Init("", "", "", "", "alice=token-a,bob=token-b", path, "admin-key"); err != nil {
@@ -88,6 +122,24 @@ func TestDeleteTokenWritesTokenMapFile(t *testing.T) {
 	}
 	if !containsAll(string(data), `"bob"`, `"token-b"`) {
 		t.Errorf("file should contain bob token, got %q", string(data))
+	}
+}
+
+func TestLoadLegacyTokenMapFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zai_tokens.json")
+	if err := os.WriteFile(path, []byte(`{"alice":"legacy-token-a"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := Init("", "", "", "", "", path, "admin-key"); err != nil {
+		t.Fatalf("Init: %v", err)
+	}
+
+	got, err := Resolve("alice")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if got != "legacy-token-a" {
+		t.Fatalf("Resolve = %q, want legacy token", got)
 	}
 }
 

@@ -7,7 +7,10 @@ import (
 )
 
 type JWTPayload struct {
-	ID string `json:"id"`
+	ID    string `json:"id"`
+	Email string `json:"email"`
+	Name  string `json:"name"`
+	Role  string `json:"role"`
 }
 
 func DecodeJWTPayload(token string) (*JWTPayload, error) {
