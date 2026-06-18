@@ -129,6 +129,12 @@ chat.z.ai 对匿名聊天请求可能返回前端验证码要求。Zeabur 后端
 | `LOG_LEVEL` | 日志级别 (`debug` / `info` / `warn` / `error`) | `info` |
 | `ZAI_UPSTREAM_BASE_URL` | z.ai 上游地址 | `https://chat.z.ai` |
 | `ZAI_CHAT_ENDPOINT_PATH` | 聊天补全上游路径 | `/api/v2/chat/completions` |
+| `ADMIN_API_KEY` | `/admin` token 管理网页和 API 的管理密钥 | 空 |
+| `ZAI_TOKEN_MAP_FILE` | 多账号 token 持久化 JSON 文件路径 | 空 |
+| `ZAI_TOKEN_MAP` | 可选的初始多账号映射，格式 `key1=token1,key2=token2` | 空 |
+| `PROXY_API_KEY` | 旧版单账号代理 key，仍兼容 | 空 |
+| `ZAI_TOKEN` | 旧版单账号初始 z.ai token，仍兼容 | 空 |
+| `ZAI_TOKEN_FILE` | 旧版单账号 token 文件，仍兼容 | 空 |
 
 支持 `.env` 文件自动加载。
 
@@ -167,11 +173,54 @@ curl http://localhost:8000/v1/chat/completions \
 4. 在 Cookies 中找到 `token` 字段
 5. 复制其值作为 API 调用的 Authorization
 
+### 方式三：网页导入多个账号 Token
+
+推荐 Zeabur 配置：
+
+```env
+ADMIN_API_KEY=你自己设置的管理密钥
+ZAI_TOKEN_MAP_FILE=/data/zai_tokens.json
+```
+
+然后挂载持久化卷到 `/data`，打开：
+
+```text
+https://你的域名/admin
+```
+
+在网页里输入 `ADMIN_API_KEY`，按行导入：
+
+```text
+alice=alice账号的_z.ai_token
+bob=bob账号的_z.ai_token
+```
+
+客户端 API key 填 `alice` 就会走 alice 账号，填 `bob` 就会走 bob 账号。
+
+说明：当前前端未发现可用的 z.ai refresh token 接口，所以这里提供的是
+“网页导入 + 热更新 + 文件持久化”，不是自动刷新网页登录态。
+
 ## API 端点
 
 ### `GET /v1/models`
 
 返回可用模型列表（OpenAI 兼容格式）。
+
+### `GET /admin`
+
+打开网页 token 管理页面，支持批量导入和删除多个账号 token。
+
+### `GET /admin/tokens`
+
+查看服务端保存的 z.ai token 状态。必须使用 `ADMIN_API_KEY` 鉴权。
+
+### `POST /admin/tokens`
+
+导入或覆盖多个账号 token。必须使用 `ADMIN_API_KEY` 鉴权。
+
+### `DELETE /admin/tokens?key=<代理key>`
+
+删除指定账号 token。必须使用 `ADMIN_API_KEY` 鉴权。
 
 ### `POST /v1/chat/completions`
 

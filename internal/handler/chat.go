@@ -19,12 +19,9 @@ import (
 )
 
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
-	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if token == "" {
-		token = r.Header.Get("x-api-key")
-	}
-	if token == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	token, err := resolveZAIRequestToken(r)
+	if err != nil {
+		writeTokenResolveError(w, err)
 		return
 	}
 

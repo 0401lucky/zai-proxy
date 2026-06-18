@@ -3,6 +3,7 @@ package handler
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,17 +15,18 @@ import (
 	"zai-proxy/internal/filter"
 	"zai-proxy/internal/logger"
 	"zai-proxy/internal/model"
+	"zai-proxy/internal/tokenstore"
 	"zai-proxy/internal/upstream"
 )
 
 // HandleMessages handles Anthropic Messages API requests (/v1/messages)
 func HandleMessages(w http.ResponseWriter, r *http.Request) {
-	// Extract token from x-api-key or Authorization header
-	token := r.Header.Get("x-api-key")
-	if token == "" {
-		token = strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	}
-	if token == "" {
+	token, err := resolveZAIRequestToken(r)
+	if err != nil {
+		if errors.Is(err, tokenstore.ErrNoStoredToken) {
+			writeAnthropicError(w, http.StatusServiceUnavailable, "api_error", "Stored z.ai token is not configured")
+			return
+		}
 		writeAnthropicError(w, http.StatusUnauthorized, "authentication_error", "Missing API key")
 		return
 	}

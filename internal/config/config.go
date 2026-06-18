@@ -11,6 +11,12 @@ type Config struct {
 	Port             string
 	UpstreamBaseURL  string
 	ChatEndpointPath string
+	ZAIToken         string
+	ZAITokenFile     string
+	ProxyAPIKey      string
+	AdminAPIKey      string
+	ZAITokenMap      string
+	ZAITokenMapFile  string
 }
 
 var Cfg *Config
@@ -41,6 +47,12 @@ func LoadConfig() {
 		Port:             port,
 		UpstreamBaseURL:  upstreamBaseURL,
 		ChatEndpointPath: chatEndpointPath,
+		ZAIToken:         strings.TrimSpace(os.Getenv("ZAI_TOKEN")),
+		ZAITokenFile:     strings.TrimSpace(os.Getenv("ZAI_TOKEN_FILE")),
+		ProxyAPIKey:      strings.TrimSpace(os.Getenv("PROXY_API_KEY")),
+		AdminAPIKey:      strings.TrimSpace(os.Getenv("ADMIN_API_KEY")),
+		ZAITokenMap:      strings.TrimSpace(os.Getenv("ZAI_TOKEN_MAP")),
+		ZAITokenMapFile:  strings.TrimSpace(os.Getenv("ZAI_TOKEN_MAP_FILE")),
 	}
 }
 
