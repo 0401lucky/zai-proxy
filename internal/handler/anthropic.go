@@ -307,6 +307,12 @@ func handleAnthropicStream(w http.ResponseWriter, body io.ReadCloser, messageID,
 			continue
 		}
 
+		if upstreamErr := upstreamData.ErrorMessage(); upstreamErr != "" {
+			logger.LogError("[Anthropic-Upstream] error event: %s", upstreamErr)
+			emitAnthropicTextDelta(w, flusher, &contentBlockIndex, &inThinkingBlock, &inTextBlock, &inToolUseBlock, &hasContent, formatUpstreamError(upstreamErr))
+			break
+		}
+
 		if upstreamData.Data.Phase == "done" {
 			break
 		}
@@ -695,6 +701,12 @@ func handleAnthropicNonStream(w http.ResponseWriter, body io.ReadCloser, message
 		var upstreamData model.UpstreamData
 		if err := json.Unmarshal([]byte(payload), &upstreamData); err != nil {
 			continue
+		}
+
+		if upstreamErr := upstreamData.ErrorMessage(); upstreamErr != "" {
+			logger.LogError("[Anthropic-Upstream] error event: %s", upstreamErr)
+			chunks = append(chunks, formatUpstreamError(upstreamErr))
+			break
 		}
 
 		if upstreamData.Data.Phase == "done" {

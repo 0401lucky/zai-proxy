@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -10,12 +10,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o zai-proxy .
 
 FROM alpine:latest
 
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /app
 
 COPY --from=builder /app/zai-proxy .
-
-# proxies.txt 可通过 docker run -v ./proxies.txt:/app/proxies.txt 挂载
-VOLUME ["/app/proxies.txt"]
 
 EXPOSE 8000
 

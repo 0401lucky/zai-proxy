@@ -4,33 +4,42 @@ import "strings"
 
 // 基础模型映射（key 全部小写，不包含标签后缀）
 var BaseModelMapping = map[string]string{
-	"glm-4.5":      "0727-360B-API",
-	"glm-4.6":      "GLM-4-6-API-V1",
-	"glm-4.7":      "glm-4.7",
-	"glm-5":        "glm-5",
-	"glm-4.5-v":    "glm-4.5v",
-	"glm-4.6-v":    "glm-4.6v",
-	"glm-4.5-air":  "0727-106B-API",
-	"0808-360b-dr": "0808-360B-DR",
+	"glm-5.2":                  "glm-5.2",
+	"glm-5.1":                  "GLM-5.1",
+	"glm-5":                    "glm-5.2",
+	"glm-5-turbo":              "GLM-5-Turbo",
+	"glm-5v-turbo":             "GLM-5v-Turbo",
+	"glm-4.5":                  "0727-360B-API",
+	"glm-4.6":                  "GLM-4-6-API-V1",
+	"glm-4.7":                  "glm-4.7",
+	"glm-4.5-v":                "glm-4.5v",
+	"glm-4.6-v":                "glm-4.6v",
+	"glm-4.1v-thinking-flashx": "GLM-4.1V-Thinking-FlashX",
+	"glm-4.5-air":              "0727-106B-API",
+	"glm-4-flash":              "glm-4-flash",
+	"glm-4-air":                "glm-4-air-250414",
+	"0808-360b-dr":             "0808-360B-DR",
+	"deep-research":            "deep-research",
+	"zero":                     "zero",
 }
 
 // Claude 模型名到 GLM 基础模型名的映射
 var ClaudeModelMapping = map[string]string{
-	"claude-opus-4-6":            "glm-4.7",
-	"claude-opus-4-5-20250514":   "glm-4.7",
-	"claude-sonnet-4-6":          "glm-4.7",
-	"claude-sonnet-4-5-20241022": "glm-4.7",
-	"claude-haiku-4-5":           "glm-4.5-air",
-	"claude-haiku-4-5-20251001":  "glm-4.5-air",
-	"claude-3-5-sonnet-20241022": "glm-4.7",
-	"claude-3-5-haiku-20241022":  "glm-4.5-air",
+	"claude-opus-4-6":            "glm-5.2",
+	"claude-opus-4-5-20250514":   "glm-5.2",
+	"claude-sonnet-4-6":          "glm-5.2",
+	"claude-sonnet-4-5-20241022": "glm-5.2",
+	"claude-haiku-4-5":           "glm-5-turbo",
+	"claude-haiku-4-5-20251001":  "glm-5-turbo",
+	"claude-3-5-sonnet-20241022": "glm-5.2",
+	"claude-3-5-haiku-20241022":  "glm-5-turbo",
 }
 
 // ResolveClaudeModel maps a Claude model name to a GLM model name with appropriate tags.
 func ResolveClaudeModel(model string, thinkingEnabled bool) (resolvedModel string, enableThinking bool) {
 	base, ok := ClaudeModelMapping[strings.ToLower(model)]
 	if !ok {
-		base = "glm-4.7"
+		base = "glm-5.2"
 	}
 
 	enableThinking = thinkingEnabled
@@ -48,6 +57,17 @@ func ResolveClaudeModel(model string, thinkingEnabled bool) (resolvedModel strin
 
 // v1/models 返回的模型列表（全部小写）
 var ModelList = []string{
+	"glm-5.2",
+	"glm-5.2-thinking",
+	"glm-5.2-search",
+	"glm-5.2-thinking-search",
+	"glm-5.2-tools",
+	"glm-5.2-tools-thinking",
+	"glm-5.1",
+	"glm-5.1-thinking",
+	"glm-5-turbo",
+	"glm-5-turbo-thinking",
+	"glm-5v-turbo",
 	"glm-4.5",
 	"glm-4.6",
 	"glm-4.7",
@@ -60,10 +80,16 @@ var ModelList = []string{
 	"glm-5-thinking-search",
 	"glm-5-tools",
 	"glm-5-tools-thinking",
+	"glm-4-flash",
+	"glm-4-air",
 	"glm-4.5-v",
 	"glm-4.6-v",
 	"glm-4.6-v-thinking",
+	"glm-4.1v-thinking-flashx",
 	"glm-4.5-air",
+	"0808-360b-dr",
+	"deep-research",
+	"zero",
 }
 
 // 解析模型名称，提取基础模型名和标签
@@ -112,5 +138,5 @@ func GetTargetModel(model string) string {
 	if target, ok := BaseModelMapping[baseModel]; ok {
 		return target
 	}
-	return "glm-4.7"
+	return "glm-5.2"
 }

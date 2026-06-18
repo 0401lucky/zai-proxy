@@ -136,15 +136,15 @@ func TestParseModelName_GLM5(t *testing.T) {
 
 func TestGetTargetModel_GLM5(t *testing.T) {
 	target := GetTargetModel("glm-5")
-	if target != "glm-5" {
-		t.Errorf("GetTargetModel(glm-5) = %q, want %q", target, "glm-5")
+	if target != "glm-5.2" {
+		t.Errorf("GetTargetModel(glm-5) = %q, want %q", target, "glm-5.2")
 	}
 }
 
 func TestGetTargetModel_GLM5Thinking(t *testing.T) {
 	target := GetTargetModel("glm-5-thinking")
-	if target != "glm-5" {
-		t.Errorf("GetTargetModel(glm-5-thinking) = %q, want %q", target, "glm-5")
+	if target != "glm-5.2" {
+		t.Errorf("GetTargetModel(glm-5-thinking) = %q, want %q", target, "glm-5.2")
 	}
 }
 
@@ -220,6 +220,8 @@ func TestGetTargetModel_WithToolsThinking(t *testing.T) {
 
 func TestModelList_ContainsToolsVariants(t *testing.T) {
 	expected := map[string]bool{
+		"glm-5.2-tools":          false,
+		"glm-5.2-tools-thinking": false,
 		"glm-4.7-tools":          false,
 		"glm-4.7-tools-thinking": false,
 		"glm-5":                  false,

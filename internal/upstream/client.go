@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"zai-proxy/internal/auth"
+	"zai-proxy/internal/config"
 	"zai-proxy/internal/logger"
 	"zai-proxy/internal/model"
 	"zai-proxy/internal/proxy"
@@ -38,6 +40,49 @@ func ExtractAllImageURLs(messages []model.Message) []string {
 	return allImageURLs
 }
 
+func buildChatQuery(token, userID, requestID, chatID, userAgent string, timestamp int64) string {
+	currentURL := fmt.Sprintf("https://chat.z.ai/c/%s", chatID)
+	values := url.Values{}
+	values.Set("timestamp", fmt.Sprintf("%d", timestamp))
+	values.Set("requestId", requestID)
+	values.Set("user_id", userID)
+	values.Set("version", "0.0.1")
+	values.Set("platform", "web")
+	values.Set("token", token)
+	values.Set("user_agent", userAgent)
+	values.Set("language", "zh-CN")
+	values.Set("languages", "zh-CN,zh,en")
+	values.Set("timezone", "Asia/Shanghai")
+	values.Set("cookie_enabled", "true")
+	values.Set("screen_width", "1920")
+	values.Set("screen_height", "1080")
+	values.Set("screen_resolution", "1920x1080")
+	values.Set("viewport_height", "900")
+	values.Set("viewport_width", "1440")
+	values.Set("viewport_size", "1440x900")
+	values.Set("color_depth", "24")
+	values.Set("pixel_ratio", "1")
+	values.Set("current_url", currentURL)
+	values.Set("pathname", fmt.Sprintf("/c/%s", chatID))
+	values.Set("search", "")
+	values.Set("hash", "")
+	values.Set("host", "chat.z.ai")
+	values.Set("hostname", "chat.z.ai")
+	values.Set("protocol", "https:")
+	values.Set("referrer", "")
+	values.Set("title", "Z.ai - Advanced AI Chatbot & Agent powered by GLM-5.2")
+	values.Set("timezone_offset", "-480")
+	values.Set("local_time", time.Now().Format(time.RFC3339Nano))
+	values.Set("utc_time", time.Now().UTC().Format(time.RFC3339Nano))
+	values.Set("is_mobile", "false")
+	values.Set("is_touch", "false")
+	values.Set("max_touch_points", "0")
+	values.Set("browser_name", "Chrome")
+	values.Set("os_name", "Windows")
+	values.Set("signature_timestamp", fmt.Sprintf("%d", timestamp))
+	return values.Encode()
+}
+
 func MakeUpstreamRequest(token string, messages []model.Message, modelName string, tools []model.Tool, toolChoice interface{}) (*http.Response, string, error) {
 	payload, err := auth.DecodeJWTPayload(token)
 	if err != nil || payload == nil {
@@ -49,27 +94,24 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 	timestamp := time.Now().UnixMilli()
 	requestID := uuid.New().String()
 	userMsgID := uuid.New().String()
+	assistantMsgID := uuid.New().String()
 
 	targetModel := model.GetTargetModel(modelName)
 	latestUserContent := ExtractLatestUserContent(messages)
 	imageURLs := ExtractAllImageURLs(messages)
 
 	signature := auth.GenerateSignature(userID, requestID, latestUserContent, timestamp)
-
-	url := fmt.Sprintf("https://chat.z.ai/api/v2/chat/completions?timestamp=%d&requestId=%s&user_id=%s&version=0.0.1&platform=web&token=%s&current_url=%s&pathname=%s&signature_timestamp=%d",
-		timestamp, requestID, userID, token,
-		fmt.Sprintf("https://chat.z.ai/c/%s", chatID),
-		fmt.Sprintf("/c/%s", chatID),
-		timestamp)
+	userAgent := uarand.GetRandom()
+	requestURL := config.ChatEndpointURL() + "?" + buildChatQuery(token, userID, requestID, chatID, userAgent, timestamp)
 
 	enableThinking := model.IsThinkingModel(modelName)
 	autoWebSearch := model.IsSearchModel(modelName)
-	if targetModel == "glm-4.5v" || targetModel == "glm-4.6v" {
+	if targetModel == "glm-4.5v" || targetModel == "glm-4.6v" || targetModel == "GLM-5v-Turbo" || targetModel == "GLM-4.1V-Thinking-FlashX" {
 		autoWebSearch = false
 	}
 
 	var mcpServers []string
-	if targetModel == "glm-4.6v" {
+	if targetModel == "glm-4.6v" || targetModel == "GLM-5v-Turbo" || targetModel == "GLM-4.1V-Thinking-FlashX" {
 		mcpServers = []string{"vlm-image-search", "vlm-image-recognition", "vlm-image-processing"}
 	}
 
@@ -196,15 +238,20 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 		"messages":         upstreamMessages,
 		"signature_prompt": latestUserContent,
 		"params":           map[string]interface{}{},
+		"extra":            map[string]interface{}{},
+		"variables":        map[string]interface{}{},
 		"features": map[string]interface{}{
 			"image_generation": false,
 			"web_search":       false,
 			"auto_web_search":  autoWebSearch,
-			"preview_mode":     true,
+			"preview_mode":     false,
+			"flags":            []string{},
 			"enable_thinking":  enableThinking,
 		},
-		"chat_id": chatID,
-		"id":      uuid.New().String(),
+		"chat_id":                        chatID,
+		"id":                             assistantMsgID,
+		"current_user_message_id":        userMsgID,
+		"current_user_message_parent_id": nil,
 	}
 
 	if len(mcpServers) > 0 {
@@ -230,19 +277,21 @@ func MakeUpstreamRequest(token string, messages []model.Message, modelName strin
 		}
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewReader(bodyBytes))
+	req, err := http.NewRequest("POST", requestURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, "", err
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
 	req.Header.Set("X-FE-Version", version.GetFeVersion())
 	req.Header.Set("X-Signature", signature)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Connection", "keep-alive")
 	req.Header.Set("Origin", "https://chat.z.ai")
-	req.Header.Set("Referer", fmt.Sprintf("https://chat.z.ai/c/%s", uuid.New().String()))
-	req.Header.Set("User-Agent", uarand.GetRandom())
+	req.Header.Set("Referer", fmt.Sprintf("https://chat.z.ai/c/%s", chatID))
+	req.Header.Set("User-Agent", userAgent)
 
 	client := proxy.GetHTTPClient()
 	resp, err := client.Do(req)

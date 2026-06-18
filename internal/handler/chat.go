@@ -21,6 +21,9 @@ import (
 func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if token == "" {
+		token = r.Header.Get("x-api-key")
+	}
+	if token == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -42,7 +45,7 @@ func HandleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Model == "" {
-		req.Model = "GLM-4.6"
+		req.Model = "glm-5.2"
 	}
 
 	resp, modelName, err := upstream.MakeUpstreamRequest(token, req.Messages, req.Model, req.Tools, req.ToolChoice)
@@ -114,6 +117,13 @@ func handleStreamResponse(w http.ResponseWriter, body io.ReadCloser, completionI
 		if err := json.Unmarshal([]byte(payload), &upstreamData); err != nil {
 			logger.LogInfo("[DEBUG-Stream] JSON parse error: %v, payload=%s", err, truncate(payload, 300))
 			continue
+		}
+
+		if upstreamErr := upstreamData.ErrorMessage(); upstreamErr != "" {
+			logger.LogError("[Upstream] error event: %s", upstreamErr)
+			sendContentChunk(w, flusher, completionID, modelName, formatUpstreamError(upstreamErr))
+			hasContent = true
+			break
 		}
 
 		logger.LogInfo("[DEBUG-Stream] phase=%s delta_content_len=%d edit_content_len=%d", upstreamData.Data.Phase, len(upstreamData.Data.DeltaContent), len(upstreamData.Data.EditContent))
@@ -617,6 +627,12 @@ func handleNonStreamResponse(w http.ResponseWriter, body io.ReadCloser, completi
 			continue
 		}
 
+		if upstreamErr := upstreamData.ErrorMessage(); upstreamErr != "" {
+			logger.LogError("[Upstream] error event: %s", upstreamErr)
+			chunks = append(chunks, formatUpstreamError(upstreamErr))
+			break
+		}
+
 		logger.LogInfo("[DEBUG-NonStream] phase=%s delta_content_len=%d edit_content_len=%d", upstreamData.Data.Phase, len(upstreamData.Data.DeltaContent), len(upstreamData.Data.EditContent))
 
 		if upstreamData.Data.Phase == "done" {
@@ -798,4 +814,11 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+func formatUpstreamError(msg string) string {
+	if strings.Contains(msg, "FRONTEND_CAPTCHA_REQUIRED") || strings.Contains(msg, "验证码") || strings.Contains(msg, "刷新页面以更新应用") {
+		return "[z.ai upstream error] 当前上游要求前端验证码验证。请使用已登录的个人 z.ai token，或先在 chat.z.ai 网页完成验证后再重试。"
+	}
+	return "[z.ai upstream error] " + msg
 }

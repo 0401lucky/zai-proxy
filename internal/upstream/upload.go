@@ -13,8 +13,10 @@ import (
 
 	"github.com/google/uuid"
 
+	"zai-proxy/internal/config"
 	"zai-proxy/internal/logger"
 	"zai-proxy/internal/proxy"
+	"zai-proxy/internal/version"
 )
 
 // FileUploadResponse z.ai 文件上传响应
@@ -135,7 +137,7 @@ func UploadImageFromURL(token string, imageURL string) (*UpstreamFile, error) {
 	writer.Close()
 
 	// 发送上传请求
-	req, err := http.NewRequest("POST", "https://chat.z.ai/api/v1/files/", &buf)
+	req, err := http.NewRequest("POST", config.UpstreamBaseURL()+"/api/v1/files/", &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upload request: %v", err)
 	}
@@ -144,6 +146,7 @@ func UploadImageFromURL(token string, imageURL string) (*UpstreamFile, error) {
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	req.Header.Set("Origin", "https://chat.z.ai")
 	req.Header.Set("Referer", "https://chat.z.ai/")
+	req.Header.Set("X-FE-Version", version.GetFeVersion())
 
 	client := proxy.GetHTTPClient()
 	resp, err := client.Do(req)

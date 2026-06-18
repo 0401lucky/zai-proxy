@@ -6,12 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"zai-proxy/internal/config"
 	"zai-proxy/internal/logger"
 	"zai-proxy/internal/proxy"
 )
 
 var (
-	feVersion   string
+	feVersion   = "prod-fe-1.1.63"
 	versionLock sync.RWMutex
 )
 
@@ -22,7 +23,7 @@ func GetFeVersion() string {
 }
 
 func fetchFeVersion() {
-	resp, err := proxy.GetHTTPClient().Get("https://chat.z.ai/")
+	resp, err := proxy.GetHTTPClient().Get(config.UpstreamBaseURL() + "/")
 	if err != nil {
 		logger.LogError("Failed to fetch fe version: %v", err)
 		return

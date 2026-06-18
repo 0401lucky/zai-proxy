@@ -1,6 +1,9 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // OpenAI 格式的消息内容项
 type ContentPart struct {
@@ -43,7 +46,7 @@ type FunctionCall struct {
 // Message 支持纯文本和多模态内容
 type Message struct {
 	Role       string      `json:"role"`
-	Content    interface{} `json:"content"`              // string 或 []ContentPart
+	Content    interface{} `json:"content"`                // string 或 []ContentPart
 	ToolCallID string      `json:"tool_call_id,omitempty"` // role: "tool" 时使用
 	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`   // role: "assistant" 时使用
 }
@@ -214,13 +217,62 @@ type ImageSearchResult struct {
 
 // UpstreamData 上游返回的数据结构
 type UpstreamData struct {
-	Type string `json:"type"`
-	Data struct {
-		DeltaContent string `json:"delta_content"`
-		EditContent  string `json:"edit_content"`
-		Phase        string `json:"phase"`
-		Done         bool   `json:"done"`
+	Type  string         `json:"type"`
+	Error *UpstreamError `json:"error,omitempty"`
+	Data  struct {
+		DeltaContent string         `json:"delta_content"`
+		EditContent  string         `json:"edit_content"`
+		Phase        string         `json:"phase"`
+		Done         bool           `json:"done"`
+		Error        *UpstreamError `json:"error,omitempty"`
+		Data         *struct {
+			Error *UpstreamError `json:"error,omitempty"`
+			Done  bool           `json:"done,omitempty"`
+		} `json:"data,omitempty"`
 	} `json:"data"`
+}
+
+type UpstreamError struct {
+	Detail           string      `json:"detail,omitempty"`
+	Message          string      `json:"message,omitempty"`
+	Code             interface{} `json:"code,omitempty"`
+	ErrorCode        string      `json:"error_code,omitempty"`
+	CaptchaErrorType string      `json:"captcha_error_type,omitempty"`
+}
+
+func (e *UpstreamError) Text() string {
+	if e == nil {
+		return ""
+	}
+	if e.Detail != "" {
+		return e.Detail
+	}
+	if e.Message != "" {
+		return e.Message
+	}
+	if e.ErrorCode != "" {
+		return e.ErrorCode
+	}
+	if e.CaptchaErrorType != "" {
+		return e.CaptchaErrorType
+	}
+	if e.Code != nil {
+		return fmt.Sprint(e.Code)
+	}
+	return "unknown upstream error"
+}
+
+func (u *UpstreamData) ErrorMessage() string {
+	if msg := u.Error.Text(); msg != "" {
+		return msg
+	}
+	if msg := u.Data.Error.Text(); msg != "" {
+		return msg
+	}
+	if u.Data.Data != nil {
+		return u.Data.Data.Error.Text()
+	}
+	return ""
 }
 
 func (u *UpstreamData) GetEditContent() string {

@@ -12,7 +12,7 @@ zai-proxy 是一个基于 Go 语言的代理服务，将 z.ai 网页聊天转换
 - 支持联网搜索模式 (search)
 - 支持工具/函数调用 (function calling)
 - 支持多模态图片输入
-- 支持匿名 Token（免登录）
+- 支持匿名 Token（当前上游可能要求前端验证码，推荐使用个人 Token）
 - 自动生成请求签名
 - 自动跟踪前端版本号
 
@@ -20,7 +20,7 @@ zai-proxy 是一个基于 Go 语言的代理服务，将 z.ai 网页聊天转换
 
 ### 从源码运行
 
-要求 Go 1.21+：
+要求 Go 1.25+：
 
 ```bash
 git clone https://github.com/yurika0211/zai-proxy.git
@@ -79,6 +79,12 @@ docker build -t zai-proxy .
 docker run -d --name zai-proxy -p 8000:8000 zai-proxy
 ```
 
+健康检查路径：
+
+```bash
+curl http://localhost:8000/healthz
+```
+
 #### Docker Compose
 
 ```yaml
@@ -96,12 +102,33 @@ services:
 docker compose up -d
 ```
 
+### Zeabur 部署
+
+1. 将仓库导入 Zeabur，部署类型选择 Dockerfile。
+2. 环境变量建议设置：
+
+```env
+PORT=8000
+LOG_LEVEL=info
+```
+
+3. 健康检查路径填写 `/healthz`。
+4. 客户端的 API key 填你的 z.ai `token` Cookie 值。
+
+详细步骤、环境变量、端口和卷挂载说明见 [ZEABUR.md](ZEABUR.md)。
+
+说明：`free` 匿名令牌仍会尝试获取 guest token，但截至 2026-06-18，
+chat.z.ai 对匿名聊天请求可能返回前端验证码要求。Zeabur 后端服务无法交互完成
+滑块验证，因此长期稳定使用建议使用个人登录后的 token。
+
 ## 环境变量
 
 | 变量名 | 说明 | 默认值 |
 |--------|------|--------|
 | `PORT` | 监听端口 | `8000` |
 | `LOG_LEVEL` | 日志级别 (`debug` / `info` / `warn` / `error`) | `info` |
+| `ZAI_UPSTREAM_BASE_URL` | z.ai 上游地址 | `https://chat.z.ai` |
+| `ZAI_CHAT_ENDPOINT_PATH` | 聊天补全上游路径 | `/api/v2/chat/completions` |
 
 支持 `.env` 文件自动加载。
 
@@ -118,7 +145,7 @@ ip:port
 
 ## 获取 z.ai Token
 
-### 方式一：使用匿名 Token（免登录）
+### 方式一：使用匿名 Token（可能需要验证码）
 
 直接使用 `free` 作为 API key，服务会自动获取匿名 token：
 
@@ -128,6 +155,9 @@ curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "glm-4.7", "messages": [{"role": "user", "content": "hello"}]}'
 ```
+
+如果返回 `FRONTEND_CAPTCHA_REQUIRED`，说明当前匿名请求需要网页端验证码。
+这种情况请改用个人 Token。
 
 ### 方式二：使用个人 Token
 
@@ -191,10 +221,14 @@ curl http://localhost:8000/v1/messages \
 
 | 模型名称 | 上游模型 | 说明 |
 |----------|----------|------|
+| `glm-5.2` | glm-5.2 | 当前旗舰模型 |
+| `glm-5.1` | GLM-5.1 | |
+| `glm-5-turbo` | GLM-5-Turbo | 轻量/快速 |
+| `glm-5v-turbo` | GLM-5v-Turbo | 视觉 |
 | `glm-4.5` | 0727-360B-API | |
 | `glm-4.6` | GLM-4-6-API-V1 | |
 | `glm-4.7` | glm-4.7 | |
-| `glm-5` | glm-5 | 最新 |
+| `glm-5` | glm-5.2 | 兼容旧名称，映射到当前旗舰模型 |
 | `glm-4.5-v` | glm-4.5v | 视觉 |
 | `glm-4.6-v` | glm-4.6v | 视觉（最新） |
 | `glm-4.5-air` | 0727-106B-API | 轻量 |
@@ -205,16 +239,16 @@ curl http://localhost:8000/v1/messages \
 
 | Claude 模型 | 映射到 | 备注 |
 |-------------|--------|------|
-| `claude-opus-4-6` | glm-4.7 | 自动启用 thinking |
-| `claude-opus-4-5-20250514` | glm-4.7 | 自动启用 thinking |
-| `claude-sonnet-4-6` | glm-4.7 | |
-| `claude-sonnet-4-5-20241022` | glm-4.7 | |
-| `claude-haiku-4-5` | glm-4.5-air | |
-| `claude-haiku-4-5-20251001` | glm-4.5-air | |
-| `claude-3-5-sonnet-20241022` | glm-4.7 | |
-| `claude-3-5-haiku-20241022` | glm-4.5-air | |
+| `claude-opus-4-6` | glm-5.2 | 自动启用 thinking |
+| `claude-opus-4-5-20250514` | glm-5.2 | 自动启用 thinking |
+| `claude-sonnet-4-6` | glm-5.2 | |
+| `claude-sonnet-4-5-20241022` | glm-5.2 | |
+| `claude-haiku-4-5` | glm-5-turbo | |
+| `claude-haiku-4-5-20251001` | glm-5-turbo | |
+| `claude-3-5-sonnet-20241022` | glm-5.2 | |
+| `claude-3-5-haiku-20241022` | glm-5-turbo | |
 
-> Opus 系列模型始终自动启用 thinking 模式。未识别的模型名会回退到 glm-4.7。
+> Opus 系列模型始终自动启用 thinking 模式。未识别的模型名会回退到 glm-5.2。
 
 ### 模型标签
 
@@ -227,6 +261,9 @@ curl http://localhost:8000/v1/messages \
 | `-tools` | 自动注入内置工具定义，模型可进行函数调用 |
 
 组合示例：
+- `glm-5.2-thinking`
+- `glm-5.2-tools`
+- `glm-5.2-tools-thinking`
 - `glm-4.7-thinking`
 - `glm-4.7-search`
 - `glm-4.7-thinking-search`

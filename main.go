@@ -19,6 +19,15 @@ func main() {
 	http.HandleFunc("/v1/models", handler.HandleModels)
 	http.HandleFunc("/v1/chat/completions", handler.HandleChatCompletions)
 	http.HandleFunc("/v1/messages", handler.HandleMessages)
+	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 
 	addr := ":" + config.Cfg.Port
 	logger.LogInfo("Server starting on %s", addr)
